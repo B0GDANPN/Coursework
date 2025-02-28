@@ -282,10 +282,10 @@ $(R1 \times R2) \times R3 \neq R1 \times (R2 \times R3)$ по стоимости
 получить приблизительно оптимальный план.
 \newline
 В данной работе рассмотрим следующие алгоритмы ДП: DPsize, DPsub, DPccp, 
-DPhyp, IK/KBZ и LinearizedDP. А также эвристические алгоритмы GOO(Greedy Operator Ordering) и 
+DPhyp и LinearizedDP. А также эвристические алгоритмы GOO(Greedy Operator Ordering) и 
 Geqo.
 
-\centering \subsubsection*{DPsize [[https://db.in.tum.de/teaching/ws2425/queryopt/main.pdf?lang=de]]} 
+\centering \subsubsection*{DPsize [https://db.in.tum.de/teaching/ws2425/queryopt/main.pdf?lang=de]} 
 \raggedright
 
 Строит оптимальное \textbf{ветвистое дерево} ( такое дерево, что хотя бы у одной вершины,
@@ -301,10 +301,9 @@ Geqo.
 и $S_2$, связанная между собой условием соединения. Так как $\abs{S_1}$ и 
 $\abs{S_2}$ меньше $\abs{s}$, то известны их оптимальные планы $p_1$ и $p_2$ соответственно. 
 Стоимость объединения $p_1$ и $p_2$ меньше дешевле старой комбинации $S_1$ и 
-$S_2$,  то происходит замена. Псевдокод:
+$S_2$,  то происходит замена.
 
 \begin{algorithm}
-    \caption{DPsize($R$)}
     \begin{algorithmic}[1]
         \State \textbf{Input:} A set of relations $R = \{R_1, \dots, R_n\}$ to be joined
         \State \textbf{Output:} An optimal bushy join tree
@@ -373,9 +372,246 @@ I^{\text{clique}}_{\text{DPsize}}(n) =
 Где \textbf{chain} - запросы соединения от n таблиц, имеющие вид цепочки. 
 \textbf{Cycle, star, clique} -- цикл, звезда(одна вершина связана со многими, все остальные
 между собой не имеют связей), полный граф.
-
-\centering \subsubsection*{DPsub [[https://db.in.tum.de/teaching/ws2425/queryopt/main.pdf?lang=de]]} 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\centering \subsubsection*{DPsub [https://db.in.tum.de/teaching/ws2425/queryopt/main.pdf?lang=de]} 
 \raggedright
+Разбивает граф соединений на подграфы, строит оптимальный порядок для каждого
+компонента и соединяет их. Также не поддерживает работу с внешними соединениями.
+\begin{algorithm}
+    \begin{algorithmic}[1]
+        \State \textbf{Input:} A set of relations $R = \{R_1, \dots, R_n\}$ to be joined
+        \State \textbf{Output:} An optimal bushy join tree
+        \State $B \gets$ an empty DP table $2^R \to$ join tree
+        \For{\textbf{each} $R_i \in R$}
+            \State $B[\{R_i\}] \gets R_i$
+        \EndFor
+        \For{\textbf{each} $1 < i \leq 2^n - 1$ \textbf{ascending}}
+            \State $S \gets \{ R_j \in R \mid ( \lfloor i / 2^{j-1} \rfloor \mod 2) = 1 \}$
+            \For{\textbf{each} $S_1, S_2 \subset S$ \textbf{such that} $S_2 = S \setminus S_1$}
+                \If{(\textbf{not} cross products $\land \neg S_1$ connected to $S_2$)}
+                    \State \textbf{continue}
+                \EndIf
+                \State $p_1 \gets B[S_1], p_2 \gets B[S_2]$
+                \If{$p_1 = \epsilon$ \textbf{or} $p_2 = \epsilon$} \textbf{continue} \EndIf
+                \State $P \gets$ CreateJoinTree($p_1, p_2$)
+                \If{$B[S] = \epsilon$ \textbf{or} $C(B[S]) > C(P)$}
+                    \State $B[S] \gets P$
+                \EndIf
+            \EndFor
+        \EndFor
+    \end{algorithmic}
+\end{algorithm}
+Перебирает всевозможные подмножества таблиц S. Разделение множество S на  $S_1$ и $S_2$, 
+так же как в DPsize. Аналогично, имеются лучшие порядки соединений $p_1$ и $p_2$, 
+и если дерево, построенное из $p_1$ и $p_2$ дешевле старого варианта то происходит 
+замена.
+\[
+I^{\text{chain}}_{\text{DPsub}}(n) =
+2^{n+2} - n^{2} - 3n - 4
+\]
 
+\[
+I^{\text{cycle}}_{\text{DPsub}}(n) =
+n2^{n} + 2^{n} - 2n^2 - 2
+\]
+
+\[
+I^{\text{star}}_{\text{DPsub}}(n) =
+2 \times 3^{n-1} - 2^{n}
+\]
+
+\[
+I^{\text{clique}}_{\text{DPsub}}(n) =
+3^n - 2^{n+1} + 1
+\]
+
+\centering \subsubsection*{DPccp [https://db.in.tum.de/teaching/ws2425/queryopt/main.pdf?lang=de][https://dsg.uwaterloo.ca/seminars/notes/Guido.pdf]}
+\raggedright
+Пусть дан граф соединений G = (V, E).
+Введём понятие csg-cmp-pair (S1, S2) -- в графе запроса выдели $S_1$, 
+$S_2$ связные непересекающиеся подграфы, такие что $S_1 \in V$ , 
+$S_2 \in V/S_1$  существует между ними существует ребро( условие 
+соединения).
+
+Заметим, что если $(S_1, S_2)$ - csg-cmp-пара, то и $(S_2, S_1)$
+-- тоже. Мы ограничим перечисление csg-cmp-пар теми $(S_1, S_2)$, 
+которые удовлетворяют условию, что $\min(S_1) < \min(S_2)$, 
+где $\min(S) = s$ такое, что 
+$s \in S$ и $\forall  s^{'} \in  S : s \neq s^{'} \implies  s < s^{'}$. 
+Поскольку это ограничение будет действовать для всех csg-cmp-пар, перечисляемых нашей процедурой, 
+не будет вычислено ни одной дублирующей csg-cmp-пары. Как следствие, мы должны позаботиться о том, 
+чтобы наша процедура динамического программирования была полной: если применяемый 
+нами бинарный оператор коммутативен, то процедура построения плана для $ S_ 1 \cup S_2$ 
+из планов для $S_1$ и $S_2$ должна учитывать коммутативность.
+
+Однако это не представляет особой сложности. Очевидно, что для того, 
+чтобы быть корректным, любой алгоритм динамического программирования 
+должен учитывать все csg-cmp-пары.  Таким образом, минимальное 
+количество вызовов функции стоимости любого алгоритма динамического 
+программирования в точности равно количеству csg-cmp-пар для данного 
+гиперграфа. Заметим, что число связных подграфов намного меньше числа 
+csg-cmp-пар. Теперь задача состоит в том, чтобы перечислить csg-cmp-pairs 
+эффективно и в порядке, приемлемом для динамического программирования. 
+Задача может быть выражена более конкретно. Перед перечислением csg-cmp-pair $(S_1, S_2)$, 
+все csg-cmp-pairs $(S^{'}_1, S^{'}_2)$, где $S^{'}_1 \subseteq  S_1$ 
+и $S^{'}_2 \subseteq  S_2$ должны быть пронумерованы.
+
+\begin{algorithm}
+    \begin{algorithmic}[1]
+        \State \textbf{Input:} A set of relations $R = \{R_1, \dots, R_n\}$
+        \State \textbf{Output:} An optimal bushy join tree
+        \State $B \gets$ an empty DP table $2^R \to$ join tree
+        \For{\textbf{each} $R_i \in R$}
+            \State $B[\{R_i\}] \gets R_i$
+        \EndFor
+        \For{\textbf{each} csg-cmp-pairs $(S_1,S_2)$, S = $S_1 \cup  S_2$}
+            \State $p_1 \gets B[S_1], p_2 \gets B[S_2]$
+            \State $P \gets$ CreateJoinTree($p_1, p_2$)
+            \If{$B[S] = \epsilon$ \textbf{or} $C(B[S]) > C(P)$}
+                \State $B[S] \gets P$
+            \EndIf
+        \EndFor \\
+        \textbf{return} $B[\{R_0, \dots, R_{n-1}\}]$
+    \end{algorithmic}
+\end{algorithm}
+
+Сначала алгоритм инициализирует начальные значени $B[{R_i}] = R_i$.
+Затем перебираются такие подмножества вершин $S_1$ и $S_2$, 
+что $(S_1, S_2)$ -- csg-cmp-pair и $B[S_1]$, $B[S_2]$ уже известны. 
+Берутся оптимальные планы $p_1$ и $p_2$ от $S_1$ и $S_2$, затем они 
+соединяются. Если стоимость получившегося плана больше B[S], то 
+происходит замена. Ограничения:
+\begin{itemize}
+    \item Не поддерживает внешние соединения, из-за разбиения на csg-cmp-pairs.
+    \item Сильно зависит от эффективности поиска csg-cmp-pair.
+\end{itemize}
+
+Данная реализация возможна, только если удастся перечислить все 
+csg-cmp-pairs, т.к DPccp переребирает только связные графы и их комплементарные пары.
+Нужно выполнить несколько задач: 
+\begin{itemize}
+    \item Эффективно пронумеровать все связные графы (CSG).
+    \item Не пересчитывать CSG дважды, пример (S1, S2) и (S2, S1).
+    \item Эффективно находить CCP для каждой CSG.
+\end{itemize}
+
+Предварительно проведём поиск в ширину и пронумеруем все узлы:
+
+$V = {R_0, \dots,R_{n-1}}$ -- избавимся от повторного добавления $(S_1, S_2)$ и $(S_2, S_1)$.
+Пусть G = {V, E} — граф запроса.
+Введём множества $B_i = {v_j | j <= i}$ и функцию соседства 
+$N(V^{'}) = {v^{'} | v \in V^{'} и (v,v^{'}) \in E}$
+\newline
+
+\begin{algorithm}
+    Algorithm EnumerateCsg
+    \begin{algorithmic}[1]
+        \For{$i = n - 1$ \textbf{to} $0$}  
+            \State \textbf{emit} $u_i$;
+            \State EnumerateCsgRec($G, u_i, B_i$);
+        \EndFor
+        \State EnumerateCsgRec($G, S, X$);
+        \State $N \gets \mathcal{N}(S) \setminus X$;
+        \For{\textbf{each} $S^{'} \subseteq N$ \textbf{where} $S^{'} \neq \emptyset$}
+            \State \textbf{emit} $(S, S^{'})$
+        \EndFor 
+        \For{\textbf{each} $S^{'} \subseteq N$ \textbf{where} $S^{'} \neq \emptyset$}
+            \State EnumerateCsgRec($G, (S \cup S^{'}), (X \cup N)$)
+        \EndFor 
+    \end{algorithmic}
+\end{algorithm}
+
+\begin{center}
+    \begin{tikzpicture}
+        % Определение узлов
+        \node (R0) at (0,2) {$R_0$};
+        \node (R1) at (-1,1) {$R_1$};
+        \node (R2) at (0,1) {$R_2$};
+        \node (R3) at (1,1) {$R_3$};
+        \node (R4) at (0,0) {$R_4$};
+
+        % Рёбра графа
+        \draw (R0) -- (R1);
+        \draw (R0) -- (R2);
+        \draw (R0) -- (R3);
+        \draw (R1) -- (R4);
+        \draw (R2) -- (R4);
+        \draw (R2) -- (R3);
+    \end{tikzpicture}
+\end{center}
+
+\begin{center}
+    \renewcommand{\arraystretch}{1.3} % Увеличиваем высоту строк
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{\textit{S}} & $X$ & $N$ & emit$/S$ \\ 
+        \hline
+        $\{4\}$ & $\{0,1,2,3,4\}$ & $\emptyset$ & \\ 
+        \hline
+        $\{3\}$ & $\{0,1,2,3\}$ & $\{4\}$ & $\{3,4\}$ \\ 
+        \hline
+        $\{2\}$ & $\{0,1,2\}$ & $\{3,4\}$ & $\{2,3\}$ \\ 
+        &  &  & $\{2,4\}$ \\ 
+        &  &  & $\{2,3,4\}$ \\ 
+        \hline
+        $\{1\}$ & $\{0,1\}$ & $\{4\}$ & $\{1,4\}$ \\ 
+        \hline
+        $\rightarrow \{1,4\}$ & $\{0,1,4\}$ & $\{2,3\}$ & $\{1,2,4\}$ \\ 
+        &  &  & $\{1,3,4\}$ \\ 
+        &  &  & $\{1,2,3,4\}$ \\ 
+        \hline
+        $\{0\}$ & $\{0\}$ & $\{1,2,3\}$ & $\{0,1\}$ \\ 
+        &  &  & $\{0,2\}$ \\ 
+        &  &  & $\{0,3\}$ \\ 
+        \hline
+        $\rightarrow \{0,1\}$ & $\{0,1,2,3\}$ & $\{4\}$ & $\{0,1,4\}$ \\ 
+        \hline
+        $\rightarrow \{0,2\}$ & $\{0,1,2,3\}$ & $\{4\}$ & $\{0,2,4\}$ \\ 
+        \hline
+        $\rightarrow \{0,3\}$ & $\{0,1,2,3\}$ & $\{4\}$ & $\{0,3,4\}$ \\ 
+        \hline
+    \end{tabular}
+\end{center}
+
+
+\begin{algorithm}
+    Algorithm EnumerateCmp
+    \begin{algorithmic}[1]
+        \State \textbf{Input:} A connected query graph $G = (V, E)$, a connected subset $S_1$
+        \State \textbf{Precondition:} Nodes in $V$ are numbered according to a BFS
+        \State \textbf{Output:} Emits all complements $S_2$ for $S_1$ such that $(S_1, S_2)$ is a csg-cmp-pair
+        \State $X \gets B_{\min(S_1)} \cup S_1$
+        \State $N \gets \mathcal{N}(S) \setminus X$
+        \For{\textbf{each} $u_i \in N$ \textbf{by descending} $i$}
+            \State \textbf{emit} $u_i$
+            \State EnumerateCmpRec($G, \{u_i\}, X \cup N$)
+        \EndFor
+    \end{algorithmic}
+\end{algorithm}
+
+Вместе эти алгоритмы позволяют эффективно находить ccp для каждой csg.
+Сложность:
+\[
+I^{\text{chain}}_{\text{DPсhain}}(n) =
+n^3
+\]
+
+\[
+I^{\text{cycle}}_{\text{DPccp}}(n) =
+n^3
+\]
+
+\[
+I^{\text{star}}_{\text{DPccp}}(n) =
+n2^n
+\]
+
+\[
+I^{\text{clique}}_{\text{DPccp}}(n) =
+3^n
+\]
+Можно заметить, что также как и DPsize и DPsub, DPccp не поддерживает внешние соединения.
+Однако он на каждом типе графа имеет меньшую сложность и имеет более сложную
+реализацию чем DPsize и DPsub.
 \end{flushleft}
 \end{document}
